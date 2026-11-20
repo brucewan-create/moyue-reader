@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:charset/charset.dart';
 import 'package:epubx/epubx.dart';
+import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
@@ -215,15 +216,104 @@ class BookParser {
     return chapters;
   }
 
+  /// 需要跳过的 HTML 标签（脚本/样式/元数据，不属于正文）
+  static const Set<String> _skipTags = {
+    'script', 'style', 'head', 'noscript', 'meta', 'link', 'title',
+  };
+
+  /// 块级标签——在这些标签前后插入换行，保留段落结构
+  static const Set<String> _blockTags = {
+    'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'br', 'li', 'ul', 'ol', 'tr', 'table', 'blockquote',
+    'section', 'article', 'header', 'footer', 'hr', 'pre',
+  };
+
+  /// 把 EPUB 章节 HTML 转成保留段落结构的纯文本。
+  /// html 包自带的 body.text 只拼接文本节点、丢弃所有换行，会把整章挤成一坨——这里不用它。
+  static String _htmlToText(String html) {
+    if (html.trim().isEmpty) return '';
+    final document = html_parser.parseFragment(html);
+    final buffer = StringBuffer();
+    // 用一个布尔标志跟踪是否位于行首，避免反复 StringBuffer.toString()
+    bool lineStart = true;
+    void walk(dom.Node node) {
+      if (node is dom.Text) {
+        buffer.write(node.data);
+        if (node.data.isNotEmpty) lineStart = node.data.endsWith('\n');
+        return;
+      }
+      if (node is dom.Element) {
+        final tag = node.localName?.toLowerCase() ?? '';
+        if (_skipTags.contains(tag)) return;
+        if (_blockTags.contains(tag) && !lineStart) {
+          buffer.writeln();
+          lineStart = true;
+        }
+      }
+      for (final child in node.nodes) {
+        walk(child);
+      }
+      if (node is dom.Element && _blockTags.contains(node.localName?.toLowerCase() ?? '')) {
+        if (!lineStart) {
+          buffer.writeln();
+          lineStart = true;
+        }
+      }
+    }
+    walk(document);
+
+    return buffer
+        .toString()
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n')
+        .replaceAll('\u00A0', ' ') // &nbsp;
+        .split('\n')
+        .map((line) => line.trimRight())
+        .join('\n')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
+  }
+
+  /// 章节标题：优先 EPUB 目录名，其次 HTML 的 h1~h3，最后兜底序号
+  static String _chapterTitle(String html, String? navTitle, int index) {
+    if (navTitle != null) {
+      final t = navTitle.trim().replaceAll(RegExp(r'\s+'), ' ');
+      if (t.isNotEmpty && t.length <= 60) return t;
+    }
+    if (html.trim().isNotEmpty) {
+      try {
+        final doc = html_parser.parseFragment(html);
+        for (final tag in ['h1', 'h2', 'h3']) {
+          final el = doc.querySelector(tag);
+          if (el != null) {
+            final t = el.text.trim().replaceAll(RegExp(r'\s+'), ' ');
+            if (t.isNotEmpty && t.length <= 60) return t;
+          }
+        }
+      } catch (_) {}
+    }
+    return '第 ${index + 1} 章';
+  }
+
   /// 解析 EPUB
   static Future<ParsedBook> _parseEpub(String filePath) async {
     final file = File(filePath);
     final bytes = await file.readAsBytes();
     final epubBook = await EpubReader.readBook(bytes);
 
-    final title = epubBook.Title ??
-        file.uri.pathSegments.last.replaceAll(RegExp(r'\.epub$', caseSensitive: false), '');
-    final author = epubBook.Author ?? '未知作者';
+    final title = (epubBook.Title?.trim().isNotEmpty == true)
+        ? epubBook.Title!.trim()
+        : file.uri.pathSegments.last.replaceAll(RegExp(r'\.epub$', caseSensitive: false), '');
+    // Author 为空时尝试 AuthorList
+    String author = epubBook.Author?.trim() ?? '';
+    if (author.isEmpty) {
+      final names = epubBook.AuthorList
+              ?.where((a) => a != null && a.trim().isNotEmpty)
+              .map((a) => a!.trim())
+              .toList() ??
+          [];
+      author = names.isEmpty ? '未知作者' : names.join('、');
+    }
 
     final buffer = StringBuffer();
     final chapters = <Chapter>[];
@@ -232,58 +322,53 @@ class BookParser {
     // 按 Spine 顺序读取章节
     for (int i = 0; i < bookChapters.length; i++) {
       final chapter = bookChapters[i];
+      final htmlContent = chapter.HtmlContent ?? '';
       final startOffset = buffer.length;
 
-      // 章节标题
-      final chapterTitle = (chapter.Title?.isNotEmpty == true)
-          ? chapter.Title!
-          : '第 ${i + 1} 章';
+      // 提取 HTML 正文（保留段落结构）
+      final text = _htmlToText(htmlContent);
+      if (text.isEmpty) continue;
 
-      // 提取 HTML 正文
-      final htmlContent = chapter.HtmlContent;
-      if (htmlContent != null && htmlContent.isNotEmpty) {
-        final document = html_parser.parse(htmlContent);
-        final text = document.body?.text ?? '';
-        buffer.writeln(text.trim());
-      }
-
-      if (buffer.length > startOffset) {
-        chapters.add(Chapter(
-          index: chapters.length,
-          title: chapterTitle,
-          startOffset: startOffset,
-          endOffset: buffer.length,
-        ));
-      }
+      buffer.writeln(text);
+      chapters.add(Chapter(
+        index: chapters.length,
+        title: _chapterTitle(htmlContent, chapter.Title, chapters.length),
+        startOffset: startOffset,
+        endOffset: buffer.length,
+      ));
     }
 
-    // 如果没有章节，尝试从 Content.Html 读取
+    // 如果没有章节，尝试从 Content.Html 读取（按文件名排序保证顺序稳定）
     if (chapters.isEmpty && epubBook.Content != null) {
       final htmlFiles = epubBook.Content!.Html;
       if (htmlFiles != null) {
-        for (final htmlFile in htmlFiles.values) {
+        final entries = htmlFiles.entries.toList()
+          ..sort((a, b) => (a.value.FileName ?? '').compareTo(b.value.FileName ?? ''));
+        for (final entry in entries) {
+          final htmlFile = entry.value;
+          final htmlContent = htmlFile.Content ?? '';
+          final text = _htmlToText(htmlContent);
+          if (text.isEmpty) continue;
           final startOffset = buffer.length;
-          final document = html_parser.parse(htmlFile.Content ?? '');
-          final text = document.body?.text ?? '';
-          buffer.writeln(text.trim());
-          if (buffer.length > startOffset) {
-            chapters.add(Chapter(
-              index: chapters.length,
-              title: htmlFile.FileName ?? '正文',
-              startOffset: startOffset,
-              endOffset: buffer.length,
-            ));
-          }
+          buffer.writeln(text);
+          chapters.add(Chapter(
+            index: chapters.length,
+            title: _chapterTitle(htmlContent, htmlFile.FileName, chapters.length),
+            startOffset: startOffset,
+            endOffset: buffer.length,
+          ));
         }
       }
-      if (chapters.isEmpty) {
-        chapters.add(Chapter(
-          index: 0,
-          title: '正文',
-          startOffset: 0,
-          endOffset: buffer.length,
-        ));
-      }
+    }
+
+    // 兜底：至少生成一个章节，避免目录空白
+    if (chapters.isEmpty) {
+      chapters.add(Chapter(
+        index: 0,
+        title: '正文',
+        startOffset: 0,
+        endOffset: buffer.length,
+      ));
     }
 
     return ParsedBook(
