@@ -30,6 +30,7 @@ class ReaderSettings {
   final bool pageTurnAnimation;
   final int pageTurnMode; // 0=左右翻页 1=上下滚动
   final int indent; // 首行缩进字符数
+  final double pageMargin; // 页面边距
 
   ReaderSettings({
     this.theme = ReaderTheme.paper,
@@ -42,6 +43,7 @@ class ReaderSettings {
     this.pageTurnAnimation = true,
     this.pageTurnMode = 0,
     this.indent = 2,
+    this.pageMargin = 24,
   });
 
   ReaderSettings copyWith({
@@ -55,6 +57,7 @@ class ReaderSettings {
     bool? pageTurnAnimation,
     int? pageTurnMode,
     int? indent,
+    double? pageMargin,
   }) =>
       ReaderSettings(
         theme: theme ?? this.theme,
@@ -67,6 +70,7 @@ class ReaderSettings {
         pageTurnAnimation: pageTurnAnimation ?? this.pageTurnAnimation,
         pageTurnMode: pageTurnMode ?? this.pageTurnMode,
         indent: indent ?? this.indent,
+        pageMargin: pageMargin ?? this.pageMargin,
       );
 
   static const List<String> fontFamilies = [
@@ -118,6 +122,7 @@ class SettingsService extends ChangeNotifier {
       pageTurnAnimation: _prefs.getBool('pageTurnAnimation') ?? true,
       pageTurnMode: _prefs.getInt('pageTurnMode') ?? 0,
       indent: _prefs.getInt('indent') ?? 2,
+      pageMargin: _prefs.getDouble('pageMargin') ?? 24,
     );
     _loaded = true;
     notifyListeners();
@@ -135,6 +140,7 @@ class SettingsService extends ChangeNotifier {
     await _prefs.setBool('pageTurnAnimation', newSettings.pageTurnAnimation);
     await _prefs.setInt('pageTurnMode', newSettings.pageTurnMode);
     await _prefs.setInt('indent', newSettings.indent);
+    await _prefs.setDouble('pageMargin', newSettings.pageMargin);
     notifyListeners();
   }
 }
