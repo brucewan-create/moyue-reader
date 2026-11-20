@@ -99,10 +99,10 @@ class DatabaseService {
 
   Future<List<Book>> getAllBooks({String? search, String? sortBy}) async {
     final db = await database;
-    String where = '';
-    List<dynamic> args = [];
+    String? where;
+    List<dynamic>? args;
     if (search != null && search.isNotEmpty) {
-      where = 'WHERE title LIKE ? OR author LIKE ?';
+      where = 'title LIKE ? OR author LIKE ?';
       args = ['%$search%', '%$search%'];
     }
 
