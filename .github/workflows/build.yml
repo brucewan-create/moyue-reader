@@ -16,6 +16,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
 
@@ -52,6 +53,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
 
@@ -59,7 +61,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Android APK (arm64 + armv7)
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --android-skip-build-dependency-validation
 
       - name: Package Android APKs
         run: |

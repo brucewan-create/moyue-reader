@@ -30,8 +30,8 @@ dependencies:
   epubx: ^4.0.0
   html: ^0.15.6
 
-  # PDF 渲染
-  pdfrx: ^2.4.5
+  # PDF 文本提取（纯 Dart，跨平台无原生依赖）
+  syncfusion_flutter_pdf: ^33.2.13
 
   # 中文编码检测 (GBK/GB2312/Big5)
   charset: ^2.0.1

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:pdfrx/pdfrx.dart';
 import 'package:provider/provider.dart';
 
 import '../models/book.dart';
@@ -259,15 +258,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   Widget _buildReader(ReaderTheme theme, ReaderSettings settings) {
-    final isPdf = widget.book.bookFormat == BookFormat.pdf;
-
     return Stack(
       children: [
-        // 正文
-        if (isPdf)
-          _buildPdfView()
-        else
-          _buildTextView(theme, settings),
+        // 正文（所有格式统一走文本阅读）
+        _buildTextView(theme, settings),
 
         // 顶部工具栏
         if (_showToolbar)
@@ -542,20 +536,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final end = chapter.endOffset.clamp(0, content.length);
     if (start >= end) return '';
     return content.substring(start, end);
-  }
-
-  Widget _buildPdfView() {
-    return PdfViewer.file(
-      _book.filePath,
-      params: PdfViewerParams(
-        onPageChanged: (pageNumber) {
-          if (pageNumber != null) {
-            setState(() => _currentPosition = pageNumber - 1);
-            _saveProgress();
-          }
-        },
-      ),
-    );
   }
 
   void _nextPage() {

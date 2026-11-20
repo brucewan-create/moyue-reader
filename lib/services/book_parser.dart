@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:charset/charset.dart';
 import 'package:epubx/epubx.dart';
 import 'package:html/parser.dart' as html_parser;
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../models/book.dart';
 
@@ -293,17 +294,54 @@ class BookParser {
     );
   }
 
-  /// 解析 PDF（仅提取元数据，正文由 pdfrx 直接渲染）
+  /// 解析 PDF（用 syncfusion 提取纯文本，走统一阅读流程）
   static Future<ParsedBook> _parsePdf(String filePath) async {
     final file = File(filePath);
-    final title = file.uri.pathSegments.last.replaceAll(RegExp(r'\.pdf$', caseSensitive: false), '');
+    final name = file.uri.pathSegments.last;
+    final dot = name.lastIndexOf('.');
+    final title = dot > 0 ? name.substring(0, dot) : name;
 
-    // PDF 正文由专门的 PDF 阅读器组件渲染，这里只返回基础信息
+    final bytes = await file.readAsBytes();
+    final document = PdfDocument(inputBytes: bytes);
+    final extractor = PdfTextExtractor(document);
+    final text = extractor.extractText();
+    document.dispose();
+
+    final content = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+
+    // 按页分段作为章节（PDF 文本里用换页符分隔）
+    final chapters = <Chapter>[];
+    final segments = content.split(RegExp(r'\n\s*\n'));
+    int offset = 0;
+    for (int i = 0; i < segments.length; i++) {
+      final start = offset;
+      offset += segments[i].length + 2;
+      chapters.add(Chapter(
+        index: chapters.length,
+        title: segments[i].trim().length > 20
+            ? segments[i].trim().substring(0, 20)
+            : '第 ${i + 1} 段',
+        startOffset: start,
+        endOffset: offset,
+      ));
+    }
+    if (chapters.isEmpty) {
+      chapters.add(Chapter(index: 0, title: '正文', startOffset: 0, endOffset: content.length));
+    }
+    // 修正最后一章结束位置
+    final last = chapters.last;
+    chapters[chapters.length - 1] = Chapter(
+      index: last.index,
+      title: last.title,
+      startOffset: last.startOffset,
+      endOffset: content.length,
+    );
+
     return ParsedBook(
       title: title,
       author: '未知作者',
-      content: '',
-      chapters: [],
+      content: content,
+      chapters: chapters,
     );
   }
 
