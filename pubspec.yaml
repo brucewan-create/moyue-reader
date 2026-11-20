@@ -1,0 +1,48 @@
+name: moyue_reader
+description: "墨阅 - 跨平台离线小说阅读器 (Windows + Android)"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # 状态管理
+  provider: ^6.1.5
+
+  # 本地数据库 (Android 用 sqflite, Windows 用 ffi)
+  sqflite: ^2.4.6
+  sqflite_common_ffi: ^2.4.7
+  path: ^1.9.1
+
+  # 文件系统与路径
+  path_provider: ^2.1.6
+  file_picker: ^13.4.0
+
+  # 设置持久化
+  shared_preferences: ^2.5.6
+
+  # EPUB 解析
+  epubx: ^4.0.0
+  html: ^0.15.6
+
+  # PDF 渲染
+  pdfrx: ^2.4.5
+
+  # 中文编码检测 (GBK/GB2312/Big5)
+  charset: ^2.0.1
+
+  # 国际化与格式化
+  intl: ^0.20.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

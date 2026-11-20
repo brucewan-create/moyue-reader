@@ -1,0 +1,104 @@
+name: Build 墨阅 Windows + Android
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Package Windows build
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath moyue-windows-x64.zip -Force
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: moyue-windows-x64
+          path: moyue-windows-x64.zip
+          retention-days: 30
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Android APK (arm64 + armv7)
+        run: flutter build apk --release --split-per-abi
+
+      - name: Package Android APKs
+        run: |
+          mkdir -p android-out
+          cp build/app/outputs/flutter-apk/*.apk android-out/
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: moyue-android-apks
+          path: android-out/
+          retention-days: 30
+
+  release:
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: moyue-windows-x64
+          path: release/windows
+
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: moyue-android-apks
+          path: release/android
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: 墨阅 v1.0.0
+          body: |
+            墨阅 - 跨平台离线小说阅读器
+
+            Windows: 解压 moyue-windows-x64.zip，运行 moyue_reader.exe
+            Android: 下载对应架构的 APK 安装（arm64-v8a 为大多数现代手机）
+          files: |
+            release/windows/moyue-windows-x64.zip
+            release/android/*.apk
